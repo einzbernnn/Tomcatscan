@@ -3,6 +3,7 @@ Tomcat common vulnerability detection
 
 python3 Tomcatscan.py -u xxx -p xx  //对指定端口进行漏洞探测，同时会检测8009端口cve-2020-1938漏洞
 ![Image text](https://github.com/einzbernnn/Tomcatscan/blob/main/img/1.png)
+
 python TomcatScan.py -H 192.168.1.1-192.168.2.255 //默认检测8080，8081，80，443，8009端口，如需深入探测，可以先利用信息收集工具收集tomcat url保存到文件中后通过 -f参数检测
 
 
