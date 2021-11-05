@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # _*_ coding:utf-8 _*_
-version = "1.0"
+version = "1.1"
 banner='''
  _____                         _   _____                 
 |_   _|                       | | /  ___|                
