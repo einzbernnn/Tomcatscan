@@ -1,6 +1,7 @@
 tomcat
 admin
-manager
-role
 root
-system
+manager
+role1
+both
+both1
