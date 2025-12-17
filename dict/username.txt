@@ -1,7 +1,0 @@
-tomcat
-admin
-root
-manager
-role1
-both
-both1
