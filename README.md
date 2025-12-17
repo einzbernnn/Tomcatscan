@@ -19,7 +19,7 @@ python TomcatScan.py -f url.txt  <br>
 ```
 
 
-#-f  Supported IP formats in the file: <br>
+-f  Supported IP formats in the file: <br>
 ```
 http://192.168.1.1:8080 <br>
 http://192.168.1.1 <br>
