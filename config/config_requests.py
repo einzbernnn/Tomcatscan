@@ -1,14 +1,4 @@
 
-# from fake_useragent import UserAgent
-#
-# # 实例化 UserAgent 类
-# ua = UserAgent(verify_ssl=False)
-#
-# # 通用headers配置
-# headers={"User-Agent":ua.random}
-#
-# if __name__ == '__main__':
-#     print(headers)
 
 import random
 
@@ -65,5 +55,33 @@ ua=random.choice([
 
 headers={"User-Agent":ua}
 
+# 全局代理配置，通过 set_proxy 函数设置
+proxies = None
+
+def set_proxy(proxy_str):
+    global proxies
+    if proxy_str:
+        if not proxy_str.startswith('http://') and not proxy_str.startswith('https://'):
+            proxy_str = 'http://' + proxy_str
+        proxies = {
+            'http': proxy_str,
+            'https': proxy_str
+        }
+    else:
+        proxies = None
+
+def get_proxies():
+    return proxies
+
+thread_num = 10
+
+def set_threads(num):
+    global thread_num
+    thread_num = num
+
+def get_threads():
+    return thread_num
+
 if __name__ == '__main__':
     print(headers)
+
