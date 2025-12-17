@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-# _*_ coding:utf-8 _*_
+# -*- coding:utf-8 -*-
 import argparse
 import sys
 import socket
 import requests
+from urllib.parse import urlparse
 from config.config_logging import loglog
 from multiprocessing import Pool, Manager
-from config.config_requests import headers
+from config.config_requests import headers, set_proxy, get_proxies, set_threads
 from poc.index import *
+from poc.utils import normalize_target
 tport=['8080','80','443','8081','8443']
 tport3=['80','443']
 tport2=['8009']
@@ -22,7 +24,6 @@ file3=[]
 file4=[]
 file5=[]
 file10=[]
-#只探测端口不探测服务，如何探测端口，返回网站内容
 def pocbase(pocname,rip,rport):
     try:
         tmp,res=eval(pocname).run(rip,rport)
@@ -30,21 +31,53 @@ def pocbase(pocname,rip,rport):
     except:
         pass
 
-def poc(rip,rport):
-    print ("[*] =========Task Start=========")
+def poc(rip, rport):
+    print("[*] =========Task Start=========")
     for i in pocindex:
-        res=pocbase(i,rip,rport)
-        if res:
+        res = pocbase(i, rip, rport)
+        if res and res[0] == 1:
             loglog(res[1])
             print(res[1])
-    print ("[*] =========Task E n d=========")
-def poc2(rip,rport):
+    print("[*] =========Task End=========")
+
+def poc2(rip, rport):
     for i in pocindex:
         if i != 'cve_2020_1938':
-            res=pocbase(i,rip,rport)
-            if res:
+            res = pocbase(i, rip, rport)
+            if res and res[0] == 1:
                 loglog(res[1])
                 print(res[1])
+
+def poc2_with_scheme(rip, rport, scheme):
+    from poc.utils import HTTPS_PORTS
+    original_https_ports = HTTPS_PORTS.copy()
+    
+    try:
+        if scheme == 'https':
+            HTTPS_PORTS.add(rport)
+        else:
+            HTTPS_PORTS.discard(rport)
+        
+        for i in pocindex:
+            if i != 'cve_2020_1938':
+                res = pocbase(i, rip, rport)
+                if res and res[0] == 1:
+                    loglog(res[1])
+                    print(res[1])
+    finally:
+        HTTPS_PORTS.clear()
+        HTTPS_PORTS.update(original_https_ports)
+
+def check_port_open(host, port, timeout=1):
+    sk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sk.settimeout(timeout)
+    try:
+        sk.connect((host, port))
+        return True
+    except Exception:
+        return False
+    finally:
+        sk.close()
 
 def Tomcat_Console():
     parser = argparse.ArgumentParser()
@@ -53,7 +86,13 @@ def Tomcat_Console():
     scanner.add_argument("-H",type=str,dest='H', help="target ip-ip") 
     scanner.add_argument("-p", dest='port', help="target port")
     scanner.add_argument("-f", dest='file', help="target list")
+    scanner.add_argument("--proxy", dest='proxy', help="http proxy, e.g., 127.0.0.1:8080")
+    scanner.add_argument("-t", dest='threads', type=int, default=10, help="thread number, default 10")
     args = parser.parse_args()
+    
+    if args.proxy:
+        set_proxy(args.proxy)
+    set_threads(args.threads)
     def int_ip(x):
         return '.'.join([str(x/(256**i)%256) for i in range(3,-1,-1)])
     def ip_int(x):
@@ -79,13 +118,49 @@ def Tomcat_Console():
 
 
 
-    if args.ip and args.port:
-        #设置默认也检测8009端口if不等于8009，则也检测8009
-        try:
-            poc(args.ip,int(args.port))
-        except ConnectionRefusedError:
-            print("[-] [{}] Tomcat Network Is Abnormal ".format(args.ip + ':' + str(args.port)))
-            print("[*] ==========Task End==========")
+    if args.ip:
+        if args.port:
+            port_list = []
+            if ',' in args.port:
+                for p in args.port.split(','):
+                    p = p.strip()
+                    if '-' in p:
+                        start, end = p.split('-')
+                        port_list.extend(range(int(start.strip()), int(end.strip()) + 1))
+                    else:
+                        port_list.append(int(p))
+            elif '-' in args.port:
+                start, end = args.port.split('-')
+                port_list = list(range(int(start.strip()), int(end.strip()) + 1))
+            else:
+                port_list = [int(args.port)]
+        else:
+            port_list = [80, 8080, 8009]
+        
+        print("[*] =========Task Start=========")
+        
+        for target_port in port_list:
+            # 对所有端口检测cve-2020-1938（基于AJP协议，不区分HTTP/HTTPS）
+            try:
+                res = pocbase('cve_2020_1938', args.ip, target_port)
+                if res and res[0] == 1:
+                    loglog(res[1])
+                    print(res[1])
+            except Exception:
+                pass
+            
+            if check_port_open(args.ip, target_port):
+                try:
+                    poc2_with_scheme(args.ip, target_port, 'http')
+                except Exception:
+                    pass
+                
+                try:
+                    poc2_with_scheme(args.ip, target_port, 'https')
+                except Exception:
+                    pass
+        
+        print("[*] =========Task End==========")
     
 
     elif args.file:
@@ -95,7 +170,6 @@ def Tomcat_Console():
                     a=line.strip('\n')
                     b=a.split("://")[1]
                     file10.append(b)
-                    #print(file)
                 else:
                     file10.append(line.strip('\n'))
             file = list(filter(None, file10))
@@ -114,11 +188,10 @@ def Tomcat_Console():
             print ("[*] =========Task Start=========")
             file4=list(set(file3))
             for i in file4:
-                sk=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+                sk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sk.settimeout(1)
                 try:
-                    sk.connect((i,8009))
-                    print('[+] %s server port 8009 open'%i)
+                    sk.connect((i, 8009))
                     file5.append(i)
                 except Exception:
                     pass
@@ -126,15 +199,14 @@ def Tomcat_Console():
 
             if file5:
                 for ip in file5:
-                    port='8009'
+                    port = 8009
                     try:
-                        res=pocbase('cve_2020_1938',ip,port)
-                        if res:
+                        res = pocbase('cve_2020_1938', ip, port)
+                        if res and res[0] == 1:
                             loglog(res[1])
                             print(res[1])
-                    except ConnectionRefusedError:
-                        print("[-] [{}] Tomcat Network Is Abnormal ".format(ip + ':' + str(port)))
-                        print("[*] ==========Task End==========")
+                    except Exception:
+                        pass
             for i in file:
                 if ':' in i:
                     if '/' in i:
@@ -152,74 +224,93 @@ def Tomcat_Console():
             file6=list(set(file1))
             file7=list(set(file2))
             for i in file6:
-                ip=i.split(":")[0]
-                port=i.split(":")[1]
-
+                ip = i.split(":")[0]
+                port = int(i.split(":")[1])
+                target = normalize_target(ip, port)
+                
                 try:
-                    poc2(ip,int(port))
-                except ConnectionRefusedError:
-                    print("[-] [{}] Tomcat Network Is Abnormal ".format(ip + ':' + str(port)))
-                    print("[*] ==========Task End==========")
+                    res = pocbase('cve_2020_1938', ip, port)
+                    if res and res[0] == 1:
+                        loglog(res[1])
+                        print(res[1])
+                except Exception:
+                    pass
+                
+                try:
+                    poc2(ip, port)
+                except Exception:
+                    pass
             for i in file7:
                 for i2 in tport3:
+                    port = int(i2)
+                    target = normalize_target(i, port)
+                    
                     try:
-                        poc2(i,int(i2))
-                    except ConnectionRefusedError:
-                        print("[-] [{}] Tomcat Network Is Abnormal ".format(i + ':' + str(i2)))
-                        print("[*] ==========Task End==========")
+                        res = pocbase('cve_2020_1938', i, port)
+                        if res and res[0] == 1:
+                            loglog(res[1])
+                            print(res[1])
+                    except Exception:
+                        pass
+                    
+                    try:
+                        poc2(i, port)
+                    except Exception:
+                        pass
             print("[*] ==========Task End==========")
     elif iplist!=[]:
         print ("[*] =========Task Start=========")
         for i in iplist:
-            sk=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            sk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sk.settimeout(1)
             try:
-                sk.connect((i,8009))
-                print('%s server port 8009 open!'%i)
+                sk.connect((i, 8009))
+                target = normalize_target(i, 8009)
+                print('[+] [{}] server port 8009 open!'.format(target))
                 iplist2.append(i)
             except Exception:
-                #print('%s server port 8009 not open!'%i)
                 pass
             sk.close()
         for i in iplist:
             for i2 in tport:
-                sk=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+                sk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sk.settimeout(1)
-                i2=int(i2)
+                port = int(i2)
                 try:
-                    sk.connect((i,i2))
-                    print('%s server port %s open!'%(i,i2))
-                    i3='http://'+str(i)+':'+str(i2)
-                    iplist3.append(i3)
+                    sk.connect((i, port))
+                    target = normalize_target(i, port)
+                    print('[+] [{}] server port {} open!'.format(target, port))
+                    iplist3.append(target)
                 except Exception:
-                    #print('%s server port %s not open!'%(i,i2))
                     pass
                 sk.close()
-        # for i in iplist3:
-        #     if '443'!=i:
-        #     r = requests.get(i, headers=headers)
-        #     if 'https://tomcat.apache.org' in r.text:
-        #         print('find Tomcat :%s'%i) 
-        #         iplist4.append(i)
-        #     else:
-
         for ip in iplist2:
-            port='8009'
+            port = 8009
             try:
-                res=pocbase('cve_2020_1938',ip,port)
-                if res:
+                res = pocbase('cve_2020_1938', ip, port)
+                if res and res[0] == 1:
                     loglog(res[1])
                     print(res[1])
-            except ConnectionRefusedError:
-                print("[-] [{}] Tomcat Network Is Abnormal ".format(ip + ':' + str(port)))
-                print("[*] ==========Task End==========")
+            except Exception:
+                pass
         for i in iplist3:
-            ip1=i.split("http://")[1]
-            ip=ip1.split(":")[0]
-            port=ip1.split(":")[1]
+            # i已经是URL格式，提取IP和端口
+            parsed = urlparse(i)
+            ip = parsed.hostname
+            port = parsed.port
+            if port is None:
+                port = 443 if parsed.scheme == 'https' else 80
+            
             try:
-                poc2(ip,int(port))
-            except ConnectionRefusedError:
-                print("[-] [{}] Tomcat Network Is Abnormal ".format(ip + ':' + str(port)))
-                print("[*] ==========Task End==========")
+                res = pocbase('cve_2020_1938', ip, port)
+                if res and res[0] == 1:
+                    loglog(res[1])
+                    print(res[1])
+            except Exception:
+                pass
+            
+            try:
+                poc2(ip, port)
+            except Exception:
+                pass
         print("[*] ==========Task End==========")
