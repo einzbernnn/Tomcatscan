@@ -2,11 +2,10 @@
 Tomcat common vulnerability detection <br>
 Scanner:  <br>
 ```
-  -u IP          target ip 
-  -H H           target ip-ip 
-  -p PORT        target port 
-  -f FILE        target list 
-  --proxy PROXY  http proxy, e.g., 127.0.0.1:8080  
+  -i IP          target ip, support multiple ips with comma, support cidr like 192.168.1.1/24
+  -p PORT        target port, default: 80,8080,8009
+  -f FILE        target list
+  --proxy PROXY  http proxy, e.g., 127.0.0.1:8080
   -t THREADS     thread number, default 10
 ```
 
